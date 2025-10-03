@@ -1,7 +1,13 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Abrir múltiples enlaces</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Abrir múltiples enlaces</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
 <body style="font-family:Segoe UI,Arial;padding:20px">
   <h2>Abrir múltiples enlaces</h2>
-  <p>Haz clic en el botón para abrirlos todos. Si algo se bloquea, usa los links abajo.</p>
+  <p>Haz clic en el botón para abrirlos todos en lotes de 5. Si algo se bloquea, usa los links abajo.</p>
   <button id="open" style="padding:10px 16px;font-size:16px;cursor:pointer">Abrir todo</button>
   <span id="msg" style="margin-left:12px;color:#555"></span>
   <ul id="list" style="margin-top:14px"></ul>
@@ -9,26 +15,51 @@
   <script>
   (function () {
     const qs=new URLSearchParams(location.search);
-    let raw=qs.get("u")||""; if(!raw && location.hash){ raw=location.hash.slice(1); }
+    let raw=qs.get("u")||"";
+    if(!raw && location.hash){ raw=location.hash.slice(1); }
+
     const urls=(raw||"").split("|").map(decodeURIComponent).map(s=>s.trim()).filter(Boolean);
     const ul=document.getElementById("list"), btn=document.getElementById("open"), msg=document.getElementById("msg");
 
-    if(urls.length===0){ ul.innerHTML="<li>No llegaron enlaces.</li>"; btn.disabled=true; return; }
+    if(urls.length===0){
+      ul.innerHTML="<li>No llegaron enlaces.</li>";
+      btn.disabled=true;
+      return;
+    }
 
-    // Lista visible siempre:
-    urls.forEach(u=>{ const li=document.createElement("li"); const a=document.createElement("a");
-      a.href=u; a.target="_blank"; a.rel="noopener"; a.textContent=u; li.appendChild(a); ul.appendChild(li); });
-
-    // Abrir al hacer clic (gesto del usuario)
-    btn.addEventListener("click", function(){
-      let opened=0;
-      urls.forEach((u,i)=>{ setTimeout(()=>{ try{ window.open(u,"_blank"); opened++; }catch(e){} }, i*80); });
-      msg.textContent="Intentando abrir " + urls.length + " enlace(s)…";
-      setTimeout(()=>{ msg.textContent="Listo. Si faltó alguno, haz clic en la lista."; }, urls.length*120 + 400);
+    // Pintar lista siempre visible
+    urls.forEach(u=>{
+      const li=document.createElement("li");
+      const a=document.createElement("a");
+      a.href=u; a.target="_blank"; a.rel="noopener";
+      a.textContent=u;
+      li.appendChild(a);
+      ul.appendChild(li);
     });
 
-    // Intento automático suave (por si el navegador lo permite)
-    try{ urls.forEach((u,i)=>setTimeout(()=>window.open(u,"_blank"), i*80)); }catch(e){}
+    // Abrir por lotes al hacer clic
+    btn.addEventListener("click", function(){
+      let i = 0;
+      const batchSize = 5;    // ← cantidad de links por lote
+      const delay = 1000;     // ← intervalo entre lotes (1 seg)
+
+      function openBatch(){
+        let count=0;
+        while(count < batchSize && i < urls.length){
+          try{ window.open(urls[i], "_blank"); }catch(e){}
+          i++; count++;
+        }
+        msg.textContent = `Abiertos ${i} de ${urls.length}`;
+        if(i < urls.length){
+          setTimeout(openBatch, delay);
+        } else {
+          msg.textContent = `¡Listo! Se intentaron abrir ${urls.length} enlaces.`;
+        }
+      }
+
+      openBatch();
+    });
   })();
   </script>
-</body></html>
+</body>
+</html>
