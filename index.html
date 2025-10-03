@@ -1,38 +1,34 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Abrir múltiples enlaces</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body style="font-family:Segoe UI, Arial; padding:20px;">
+<!doctype html><html><head><meta charset="utf-8"><title>Abrir múltiples enlaces</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Segoe UI,Arial;padding:20px">
   <h2>Abrir múltiples enlaces</h2>
-  <p>Si el bloqueador de pop-ups detuvo algo, haz clic en los links abajo.</p>
-  <ul id="list"></ul>
+  <p>Haz clic en el botón para abrirlos todos. Si algo se bloquea, usa los links abajo.</p>
+  <button id="open" style="padding:10px 16px;font-size:16px;cursor:pointer">Abrir todo</button>
+  <span id="msg" style="margin-left:12px;color:#555"></span>
+  <ul id="list" style="margin-top:14px"></ul>
 
   <script>
-    (function () {
-      const params = new URLSearchParams(location.search);
-      const raw = params.get("u") || "";
-      const urls = raw.split("|").map(decodeURIComponent).filter(Boolean);
+  (function () {
+    const qs=new URLSearchParams(location.search);
+    let raw=qs.get("u")||""; if(!raw && location.hash){ raw=location.hash.slice(1); }
+    const urls=(raw||"").split("|").map(decodeURIComponent).map(s=>s.trim()).filter(Boolean);
+    const ul=document.getElementById("list"), btn=document.getElementById("open"), msg=document.getElementById("msg");
 
-      const ul = document.getElementById("list");
-      if (urls.length === 0) {
-        ul.innerHTML = "<li>No llegaron enlaces.</li>";
-        return;
-      }
+    if(urls.length===0){ ul.innerHTML="<li>No llegaron enlaces.</li>"; btn.disabled=true; return; }
 
-      let opened = 0;
-      urls.forEach(u => {
-        try { window.open(u, "_blank"); opened++; } catch (_) {}
-        const li = document.createElement("li");
-        const a = document.createElement("a");
-        a.href = u; a.target = "_blank"; a.rel = "noopener";
-        a.textContent = u;
-        li.appendChild(a);
-        ul.appendChild(li);
-      });
-    })();
+    // Lista visible siempre:
+    urls.forEach(u=>{ const li=document.createElement("li"); const a=document.createElement("a");
+      a.href=u; a.target="_blank"; a.rel="noopener"; a.textContent=u; li.appendChild(a); ul.appendChild(li); });
+
+    // Abrir al hacer clic (gesto del usuario)
+    btn.addEventListener("click", function(){
+      let opened=0;
+      urls.forEach((u,i)=>{ setTimeout(()=>{ try{ window.open(u,"_blank"); opened++; }catch(e){} }, i*80); });
+      msg.textContent="Intentando abrir " + urls.length + " enlace(s)…";
+      setTimeout(()=>{ msg.textContent="Listo. Si faltó alguno, haz clic en la lista."; }, urls.length*120 + 400);
+    });
+
+    // Intento automático suave (por si el navegador lo permite)
+    try{ urls.forEach((u,i)=>setTimeout(()=>window.open(u,"_blank"), i*80)); }catch(e){}
+  })();
   </script>
-</body>
-</html>
+</body></html>
