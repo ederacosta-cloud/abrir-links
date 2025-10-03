@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Abrir múltiples enlaces</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="font-family:Segoe UI, Arial; padding:20px;">
+  <h2>Abrir múltiples enlaces</h2>
+  <p>Si el bloqueador de pop-ups detuvo algo, haz clic en los links abajo.</p>
+  <ul id="list"></ul>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const raw = params.get("u") || "";
+      const urls = raw.split("|").map(decodeURIComponent).filter(Boolean);
+
+      const ul = document.getElementById("list");
+      if (urls.length === 0) {
+        ul.innerHTML = "<li>No llegaron enlaces.</li>";
+        return;
+      }
+
+      let opened = 0;
+      urls.forEach(u => {
+        try { window.open(u, "_blank"); opened++; } catch (_) {}
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = u; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = u;
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+    })();
+  </script>
+</body>
+</html>
