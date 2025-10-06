@@ -2,77 +2,110 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Descarga múltiple</title>
+  <title>Abrir o descargar múltiples enlaces</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
     body{font-family:Segoe UI,Arial;padding:20px}
-    #msg{margin:6px 0 12px;color:#222;font-weight:600}
+    #msg{margin-left:12px;color:#555}
+    button{padding:10px 16px;font-size:16px;cursor:pointer;margin-right:8px}
+    .note{color:#666;font-size:14px;margin:8px 0 16px}
   </style>
 </head>
 <body>
-  <div id="msg"></div>
-  <ul id="list"></ul>
+  <h2>Abrir o descargar múltiples enlaces</h2>
+  <p class="note">
+    Este botón convierte automáticamente los links de Google Drive <code>/file/d/{id}/view</code> a
+    <code>https://drive.usercontent.google.com/download?id={id}</code> para forzar descarga.
+    Si tu navegador bloquea ventanas emergentes, permite pop-ups y descargas automáticas para este sitio.
+  </p>
+
+  <button id="open">Abrir (ver)</button>
+  <button id="download">Descargar (forzar)</button>
+  <span id="msg"></span>
+
+  <ul id="list" style="margin-top:14px"></ul>
 
   <script>
   (function () {
-    // 1) Leer URLs desde ?u=... o desde #...
-    const qs  = new URLSearchParams(location.search);
-    let raw   = qs.get("u") || "";
+    // 1) Leer URLs desde ?u=... o #...
+    const qs = new URLSearchParams(location.search);
+    let raw = qs.get("u") || "";
     if (!raw && location.hash) raw = location.hash.slice(1);
 
-    const original = (raw || "")
+    const originalUrls = (raw||"")
       .split("|")
       .map(decodeURIComponent)
       .map(s => s.trim())
       .filter(Boolean);
 
-    // 2) Convertir a enlaces de descarga directa cuando aplique
-    function toDownloadLink(u){
-      const m = u.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
-      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
-      return u; // si ya es de descarga o no es Drive, se queda igual
-    }
-    const urls = original.map(toDownloadLink);
-
     const ul  = document.getElementById("list");
     const msg = document.getElementById("msg");
+    const btnOpen = document.getElementById("open");
+    const btnDown = document.getElementById("download");
 
-    if (urls.length === 0) {
-      msg.textContent = "No llegaron enlaces.";
+    if (originalUrls.length === 0) {
+      ul.innerHTML = "<li>No llegaron enlaces.</li>";
+      btnOpen.disabled = true;
+      btnDown.disabled = true;
       return;
     }
 
-    // 3) Pintar lista (mostrar links ya en formato de descarga)
-    urls.forEach(u=>{
-      const li = document.createElement("li");
-      const a  = document.createElement("a");
-      a.href = u; a.target = "_blank"; a.rel = "noopener";
-      a.textContent = u;
+    // 2) Funciones de conversión
+    function toDownloadLink(u){
+      // /file/d/{id}/view?...  ->  usercontent download
+      const m = u.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
+      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
+      // ya viene con uc?export=download&id=...
+      if (/drive\.google\.com\/uc\?/.test(u)) return u;
+      return u;
+    }
+
+    // 3) Pintar lista visible (los originales para referencia)
+    originalUrls.forEach(u=>{
+      const li=document.createElement("li");
+      const a=document.createElement("a");
+      a.href=u; a.target="_blank"; a.rel="noopener";
+      a.textContent=u;
       li.appendChild(a);
       ul.appendChild(li);
     });
 
-    // 4) Abrir cada descarga en una pestaña controlada y cerrarla después
-    //    Técnica: mantener la pestaña en mismo origen y disparar descarga vía <iframe>
-    //    Luego cerrar la pestaña tras un pequeño delay.
-    let opened = 0;
-    const CHILD_HTML_PREFIX = '<!doctype html><meta charset="utf-8"><title>Descargando…</title><body style="font-family:Segoe UI,Arial;padding:14px"><p>Descargando…</p><script>(function(){var u=';
-    const CHILD_HTML_SUFFIX = ';var f=document.createElement("iframe");f.style.display="none";f.src=u;document.body.appendChild(f);setTimeout(function(){window.close();},1500);})();<\/script></body>';
+    // 4) Abrir en nuevas pestañas en un solo gesto (mejor contra bloqueadores)
+    function openAll(list){
+      let opened = 0;
+      const wins = [];
+      for (let i = 0; i < list.length; i++) {
+        try {
+          const w = window.open("about:blank", "_blank");
+          if (w) { wins.push(w); opened++; }
+        } catch(e){}
+      }
+      for (let i = 0; i < wins.length; i++) {
+        try { wins[i].location = list[i]; } catch(e){}
+      }
+      if (opened === 0) {
+        msg.textContent = "Bloqueado. Permite pop-ups para este sitio y vuelve a intentar.";
+      } else if (opened < list.length) {
+        msg.textContent = `Se abrieron ${opened} de ${list.length}. Si faltan, permite pop-ups.`;
+      } else {
+        msg.textContent = `¡Listo! Se intentaron abrir ${list.length}.`;
+      }
+    }
 
-    urls.forEach(u=>{
-      try{
-        const w = window.open("", "_blank");
-        if (w) {
-          // Inyectamos HTML que dispara la descarga dentro de un iframe y cierra la pestaña
-          w.document.open();
-          w.document.write(CHILD_HTML_PREFIX + JSON.stringify(u) + CHILD_HTML_SUFFIX);
-          w.document.close();
-          opened++;
-        }
-      }catch(e){}
+    // 5) Botones
+    btnOpen.addEventListener("click", function(){
+      msg.textContent = "";
+      openAll(originalUrls);                 // visor
     });
 
-    msg.textContent = `¡Listo! Se descargaron ${opened} documento${opened===1?"":"s"}.`;
+    btnDown.addEventListener("click", function(){
+      msg.textContent = "";
+      const downloads = originalUrls.map(toDownloadLink); // descarga directa
+      openAll(downloads);
+    });
+
+    // Intento automático suave (por si ya están permitidos)
+    try { originalUrls.forEach(u => window.open(u, "_blank")); } catch(e){}
   })();
   </script>
 </body>
