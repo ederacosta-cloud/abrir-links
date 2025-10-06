@@ -30,8 +30,7 @@
     function toDownloadLink(u){
       const m = u.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
       if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
-      // si ya es de descarga o no es drive, se deja tal cual
-      return u;
+      return u; // si ya es de descarga o no es Drive, se queda igual
     }
     const urls = original.map(toDownloadLink);
 
@@ -53,22 +52,26 @@
       ul.appendChild(li);
     });
 
-    // 4) Intentar abrir todos (mismo gesto no existe; confiamos en permisos de pop-ups)
-    // Técnica: abrir about:blank y luego asignar location => mejor tasa de éxito
+    // 4) Abrir cada descarga en una pestaña controlada y cerrarla después
+    //    Técnica: mantener la pestaña en mismo origen y disparar descarga vía <iframe>
+    //    Luego cerrar la pestaña tras un pequeño delay.
     let opened = 0;
-    const wins = [];
-    for (let i = 0; i < urls.length; i++) {
-      try {
-        const w = window.open("about:blank", "_blank");
-        if (w) { wins.push(w); opened++; }
-      } catch(e){}
-    }
-    for (let i = 0; i < wins.length; i++) {
-      try { wins[i].location = urls[i]; } catch(e){}
-    }
+    const CHILD_HTML_PREFIX = '<!doctype html><meta charset="utf-8"><title>Descargando…</title><body style="font-family:Segoe UI,Arial;padding:14px"><p>Descargando…</p><script>(function(){var u=';
+    const CHILD_HTML_SUFFIX = ';var f=document.createElement("iframe");f.style.display="none";f.src=u;document.body.appendChild(f);setTimeout(function(){window.close();},1500);})();<\/script></body>';
 
-    // 5) Mensaje final
-    // (Si el navegador bloquea algunos, el número puede ser menor)
+    urls.forEach(u=>{
+      try{
+        const w = window.open("", "_blank");
+        if (w) {
+          // Inyectamos HTML que dispara la descarga dentro de un iframe y cierra la pestaña
+          w.document.open();
+          w.document.write(CHILD_HTML_PREFIX + JSON.stringify(u) + CHILD_HTML_SUFFIX);
+          w.document.close();
+          opened++;
+        }
+      }catch(e){}
+    });
+
     msg.textContent = `¡Listo! Se descargaron ${opened} documento${opened===1?"":"s"}.`;
   })();
   </script>
