@@ -53,6 +53,11 @@
     try {
       downloads.forEach(u => window.open(u, "_blank"));
     } catch(e){}
+
+    // Esperar unos segundos y cerrar la ventana
+    setTimeout(() => {
+      window.close();
+    }, 3000); // cierra después de 3 segundos
   })();
   </script>
 </body>
