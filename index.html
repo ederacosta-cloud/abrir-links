@@ -54,10 +54,12 @@
       downloads.forEach(u => window.open(u, "_blank"));
     } catch(e){}
 
-    // Esperar unos segundos y cerrar la ventana
+    // Cerrar esta página principal (la de los links)
     setTimeout(() => {
+      // 🔹 Intenta cerrar esta misma ventana
+      window.open('', '_self'); // Necesario para permitir el cierre en algunos navegadores
       window.close();
-    }, 3000); // cierra después de 3 segundos
+    }, 2500); // espera 2.5 segundos antes de cerrarse
   })();
   </script>
 </body>
