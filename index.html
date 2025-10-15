@@ -2,9 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Abrir múltiples enlaces (seguro)</title>
+  <title>Abrir múltiples enlaces (seguro, sin pestañas)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <!-- Evita filtrar la lista completa de enlaces como Referer -->
   <meta name="referrer" content="no-referrer">
   <style>
     :root { color-scheme: light dark; }
@@ -28,15 +27,11 @@
   <div id="msg" class="muted">Cargando parámetros…</div>
 
   <div class="row">
-    <button id="openBtn" disabled>Abrir enlaces</button>
-    <label style="margin-left:12px">
-      <input type="checkbox" id="autoClose" checked>
-      Cerrar esta pestaña después de abrir
-    </label>
+    <button id="openBtn" disabled>Abrir descargas</button>
   </div>
 
   <div class="row">
-    <small>Consejo: puedes pasar los enlaces por <code>?u=</code> o en el <code>#hash</code>, separados por <code>|</code>. Ejemplo:
+    <small>Usa <code>?u=</code> o <code>#hash</code> con enlaces separados por <code>|</code>. Ejemplo:
       <code>?u=https%3A%2F%2Fejemplo.com%7Chttps%3A%2F%2Fdrive.google.com%2Ffile%2Fd%2FABC</code>
     </small>
   </div>
@@ -45,14 +40,18 @@
 
   <script>
   (function () {
-    // ======== Parámetros de ajuste ========
-    const MAX_TO_OPEN = 10; // Límite de seguridad
-    const REQUIRE_CONFIRMATION = true; // pedir confirmación antes de abrir
-    const ENABLE_WHITELIST = false; // Cambia a true si deseas limitar por host
+    // ======== Configuración ========
+    const MAX_TO_OPEN = 10;           // Límite de seguridad
+    const REQUIRE_CONFIRMATION = true;
+    const ENABLE_WHITELIST = false;   // Cambia a true para restringir dominios
     const ALLOWED_HOSTS = new Set([
       // "drive.google.com",
       // "drive.usercontent.google.com"
     ]);
+
+    // Descarga por iframe (sin pestañas) — secuencial
+    const USE_IFRAME_DOWNLOADS = true;
+    const IFRAME_DELAY_MS = 1200;     // Pausa entre descargas (ajústalo si son archivos grandes)
 
     // ======== Utilidades seguras ========
     function safeDecode(s){
@@ -61,11 +60,8 @@
 
     function isAllowedUrl(u){
       try {
-        // URL con base para soportar rutas relativas, aunque no deberían usarse
         const url = new URL(u, location.href);
-        // Sólo permitimos http/https
         if (!/^https?:$/i.test(url.protocol)) return false;
-        // Whitelist opcional
         if (ENABLE_WHITELIST && !ALLOWED_HOSTS.has(url.hostname)) return false;
         return true;
       } catch {
@@ -74,7 +70,7 @@
     }
 
     function toDownloadLink(u){
-      // Convierte enlaces de Drive a descarga directa cuando aplique
+      // Soporte para Google Drive -> descarga directa
       const m = u.match(/^https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
       if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
       if (/^https?:\/\/drive\.google\.com\/uc\?/i.test(u)) return u;
@@ -91,15 +87,13 @@
       .map(s => safeDecode(s.trim()))
       .filter(Boolean);
 
-    // Filtrado por validez
     const validUrls = inputPieces.filter(isAllowedUrl);
 
     const ul  = document.getElementById("list");
     const msg = document.getElementById("msg");
     const btn = document.getElementById("openBtn");
-    const autoClose = document.getElementById("autoClose");
 
-    // ======== UI: lista y mensajes ========
+    // ======== UI ========
     if (inputPieces.length === 0) {
       msg.textContent = "No llegaron enlaces.";
       btn.disabled = true;
@@ -113,55 +107,103 @@
       btn.disabled = true;
     } else {
       const limText = validUrls.length > MAX_TO_OPEN
-        ?  (se abrirán ${MAX_TO_OPEN} de ${validUrls.length} por límite de seguridad)
+        ?  (se descargarán ${MAX_TO_OPEN} de ${validUrls.length} por límite de seguridad)
         : "";
       const rejText = rejected > 0
-        ?  — ${rejected} enlace(s) descartado(s) por no cumplir validación
+        ?  — ${rejected} enlace(s) descartado(s) por validación
         : "";
       msg.innerHTML = <span class='ok'>Listos ${validUrls.length} enlace(s) válidos</span>${limText}${rejText};
       btn.disabled = false;
     }
 
-    // Lista visible (usando textContent + atributos seguros)
     ul.innerHTML = "";
     inputPieces.forEach(u => {
       const li = document.createElement("li");
       const a  = document.createElement("a");
-      a.href = isAllowedUrl(u) ? u : "javascript:void(0)";
+      const ok = isAllowedUrl(u);
+      a.href = ok ? u : "javascript:void(0)";
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.referrerPolicy = "no-referrer";
-      a.textContent = u + (isAllowedUrl(u) ? "" : "  (descartado)");
-      if (!isAllowedUrl(u)) a.className = "warn";
+      a.textContent = u + (ok ? "" : "  (descartado)");
+      if (!ok) a.className = "warn";
       li.appendChild(a);
       ul.appendChild(li);
     });
 
-    // ======== Acción: abrir enlaces bajo demanda ========
+    // ======== Lógica de descarga ========
+    function downloadSequentiallyIframe(urls, onDone){
+      // Crea (o reutiliza) un iframe oculto
+      let iframe = document.getElementById("dl_iframe_hidden");
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        iframe.id = "dl_iframe_hidden";
+        iframe.style.display = "none";
+        iframe.setAttribute("referrerpolicy", "no-referrer");
+        document.body.appendChild(iframe);
+      }
+
+      let i = 0;
+      function next(){
+        if (i >= urls.length) {
+          onDone && onDone(true);
+          return;
+        }
+        try {
+          iframe.src = urls[i++];
+        } catch (e) {
+          // Si por alguna razón no podemos asignar, lo consideramos fallo y paramos
+          onDone && onDone(false);
+          return;
+        }
+        // No podemos confiar en onload para attachment; avanzamos por tiempo
+        setTimeout(next, IFRAME_DELAY_MS);
+      }
+      next();
+    }
+
+    function downloadWithOpen(urls, onDone){
+      try {
+        urls.forEach(u => window.open(u, "_blank", "noopener,noreferrer"));
+        onDone && onDone(true);
+      } catch {
+        onDone && onDone(false);
+      }
+    }
+
+    // ======== Botón principal ========
     btn.addEventListener("click", () => {
-      const toOpen = validUrls.map(toDownloadLink).slice(0, MAX_TO_OPEN);
+      const toDownload = validUrls.map(toDownloadLink).slice(0, MAX_TO_OPEN);
 
       if (REQUIRE_CONFIRMATION) {
         const confirmMsg =
-          Se abrirán ${toOpen.length} enlace(s) en nuevas pestañas/ventanas.\n +
+          Se iniciarán ${toDownload.length} descarga(s)${USE_IFRAME_DOWNLOADS ? " en segundo plano (sin pestañas)" : ""}.\n +
           (validUrls.length > MAX_TO_OPEN ? * Nota: hay un límite de ${MAX_TO_OPEN} por seguridad.\n : "") +
           (rejected > 0 ? * ${rejected} enlace(s) fue/fueron descartado(s) por validación.\n : "") +
           ¿Deseas continuar?;
         if (!confirm(confirmMsg)) return;
       }
 
-      // Abrimos con noopener/noreferrer (window features)
-      toOpen.forEach(u => {
-        try { window.open(u, "_blank", "noopener,noreferrer"); } catch (e) { /* ignorar */ }
-      });
-
-   
-        // Intento de cierre de esta pestaña (puede no funcionar en todos los navegadores)
+      const finishAndClose = () => {
         setTimeout(() => {
-          window.open('', '_self'); // requerido por algunos navegadores para permitir close()
+          // Intento de cierre de la página (suele requerir interacción previa: este click)
+          window.open('', '_self');
           window.close();
-        }, 1200);
-      
+        }, 800);
+      };
+
+      if (USE_IFRAME_DOWNLOADS) {
+        downloadSequentiallyIframe(toDownload, (ok) => {
+          if (!ok) {
+            // Fallback: abrir pestañas si la descarga silenciosa falla
+            downloadWithOpen(toDownload, () => finishAndClose());
+          } else {
+            finishAndClose();
+          }
+        });
+      } else {
+        downloadWithOpen(toDownload, () => finishAndClose());
+      }
     });
   })();
   </script>
