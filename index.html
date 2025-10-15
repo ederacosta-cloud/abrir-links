@@ -1,65 +1,168 @@
 <!doctype html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Abrir múltiples enlaces</title>
+  <title>Abrir múltiples enlaces (seguro)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- Evita filtrar la lista completa de enlaces como Referer -->
+  <meta name="referrer" content="no-referrer">
   <style>
-    body{font-family:Segoe UI,Arial;padding:20px}
-    #msg{margin-left:12px;color:#555}
-    ul{margin-top:14px}
+    :root { color-scheme: light dark; }
+    body{font-family:Segoe UI,Arial,system-ui,-apple-system,sans-serif; padding:20px; line-height:1.35}
+    h1{font-size:1.2rem; margin:0 0 8px}
+    .row{margin:10px 0}
+    #msg{margin:8px 0; color:#555}
+    ul{margin-top:10px; padding-left:18px}
+    li{margin:6px 0; word-break:break-all}
+    button{padding:8px 12px; border-radius:8px; border:1px solid #888; background:#f6f6f6; cursor:pointer}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    small{color:#666}
+    .warn{color:#b45309}
+    .ok{color:#166534}
+    .muted{color:#777}
   </style>
 </head>
 <body>
+  <h1>Abrir múltiples enlaces</h1>
+
+  <div id="msg" class="muted">Cargando parámetros…</div>
+
+  <div class="row">
+    <button id="openBtn" disabled>Abrir enlaces</button>
+    <label style="margin-left:12px">
+      <input type="checkbox" id="autoClose" checked>
+      Cerrar esta pestaña después de abrir
+    </label>
+  </div>
+
+  <div class="row">
+    <small>Consejo: puedes pasar los enlaces por <code>?u=</code> o en el <code>#hash</code>, separados por <code>|</code>. Ejemplo:
+      <code>?u=https%3A%2F%2Fejemplo.com%7Chttps%3A%2F%2Fdrive.google.com%2Ffile%2Fd%2FABC</code>
+    </small>
+  </div>
+
   <ul id="list"></ul>
+
   <script>
   (function () {
+    // ======== Parámetros de ajuste ========
+    const MAX_TO_OPEN = 10; // Límite de seguridad
+    const REQUIRE_CONFIRMATION = true; // pedir confirmación antes de abrir
+    const ENABLE_WHITELIST = false; // Cambia a true si deseas limitar por host
+    const ALLOWED_HOSTS = new Set([
+      // "drive.google.com",
+      // "drive.usercontent.google.com"
+    ]);
+
+    // ======== Utilidades seguras ========
+    function safeDecode(s){
+      try { return decodeURIComponent(s); } catch { return ""; }
+    }
+
+    function isAllowedUrl(u){
+      try {
+        // URL con base para soportar rutas relativas, aunque no deberían usarse
+        const url = new URL(u, location.href);
+        // Sólo permitimos http/https
+        if (!/^https?:$/i.test(url.protocol)) return false;
+        // Whitelist opcional
+        if (ENABLE_WHITELIST && !ALLOWED_HOSTS.has(url.hostname)) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function toDownloadLink(u){
+      // Convierte enlaces de Drive a descarga directa cuando aplique
+      const m = u.match(/^https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
+      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
+      if (/^https?:\/\/drive\.google\.com\/uc\?/i.test(u)) return u;
+      return u;
+    }
+
+    // ======== Leer entrada (?u= o #hash) ========
     const qs = new URLSearchParams(location.search);
     let raw = qs.get("u") || "";
     if (!raw && location.hash) raw = location.hash.slice(1);
 
-    const originalUrls = (raw||"")
+    const inputPieces = (raw || "")
       .split("|")
-      .map(decodeURIComponent)
-      .map(s => s.trim())
+      .map(s => safeDecode(s.trim()))
       .filter(Boolean);
 
-    const ul  = document.getElementById("list");
+    // Filtrado por validez
+    const validUrls = inputPieces.filter(isAllowedUrl);
 
-    if (originalUrls.length === 0) {
-      ul.innerHTML = "<li>No llegaron enlaces.</li>";
+    const ul  = document.getElementById("list");
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("openBtn");
+    const autoClose = document.getElementById("autoClose");
+
+    // ======== UI: lista y mensajes ========
+    if (inputPieces.length === 0) {
+      msg.textContent = "No llegaron enlaces.";
+      btn.disabled = true;
+      ul.innerHTML = "";
       return;
     }
 
-    function toDownloadLink(u){
-      const m = u.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
-      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
-      if (/drive\.google\.com\/uc\?/.test(u)) return u;
-      return u;
+    const rejected = inputPieces.length - validUrls.length;
+    if (validUrls.length === 0) {
+      msg.innerHTML = "<span class='warn'>No hay enlaces válidos tras validar protocolo/whitelist.</span>";
+      btn.disabled = true;
+    } else {
+      const limText = validUrls.length > MAX_TO_OPEN
+        ?  (se abrirán ${MAX_TO_OPEN} de ${validUrls.length} por límite de seguridad)
+        : "";
+      const rejText = rejected > 0
+        ?  — ${rejected} enlace(s) descartado(s) por no cumplir validación
+        : "";
+      msg.innerHTML = <span class='ok'>Listos ${validUrls.length} enlace(s) válidos</span>${limText}${rejText};
+      btn.disabled = false;
     }
 
-    // Mostrar lista de enlaces
-    originalUrls.forEach(u=>{
-      const li=document.createElement("li");
-      const a=document.createElement("a");
-      a.href=u; a.target="_blank"; a.rel="noopener";
-      a.textContent=u;
+    // Lista visible (usando textContent + atributos seguros)
+    ul.innerHTML = "";
+    inputPieces.forEach(u => {
+      const li = document.createElement("li");
+      const a  = document.createElement("a");
+      a.href = isAllowedUrl(u) ? u : "javascript:void(0)";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.referrerPolicy = "no-referrer";
+      a.textContent = u + (isAllowedUrl(u) ? "" : "  (descartado)");
+      if (!isAllowedUrl(u)) a.className = "warn";
       li.appendChild(a);
       ul.appendChild(li);
     });
 
-    // Abrir automáticamente los enlaces
-    const downloads = originalUrls.map(toDownloadLink);
-    try {
-      downloads.forEach(u => window.open(u, "_blank"));
-    } catch(e){}
+    // ======== Acción: abrir enlaces bajo demanda ========
+    btn.addEventListener("click", () => {
+      const toOpen = validUrls.map(toDownloadLink).slice(0, MAX_TO_OPEN);
 
-    // Cerrar esta página principal (la de los links)
-    setTimeout(() => {
-      // 🔹 Intenta cerrar esta misma ventana
-      window.open('', '_self'); // Necesario para permitir el cierre en algunos navegadores
-      window.close();
-    }, 2500); // espera 2.5 segundos antes de cerrarse
+      if (REQUIRE_CONFIRMATION) {
+        const confirmMsg =
+          Se abrirán ${toOpen.length} enlace(s) en nuevas pestañas/ventanas.\n +
+          (validUrls.length > MAX_TO_OPEN ? * Nota: hay un límite de ${MAX_TO_OPEN} por seguridad.\n : "") +
+          (rejected > 0 ? * ${rejected} enlace(s) fue/fueron descartado(s) por validación.\n : "") +
+          ¿Deseas continuar?;
+        if (!confirm(confirmMsg)) return;
+      }
+
+      // Abrimos con noopener/noreferrer (window features)
+      toOpen.forEach(u => {
+        try { window.open(u, "_blank", "noopener,noreferrer"); } catch (e) { /* ignorar */ }
+      });
+
+   
+        // Intento de cierre de esta pestaña (puede no funcionar en todos los navegadores)
+        setTimeout(() => {
+          window.open('', '_self'); // requerido por algunos navegadores para permitir close()
+          window.close();
+        }, 1200);
+      
+    });
   })();
   </script>
 </body>
