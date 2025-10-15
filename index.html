@@ -1,210 +1,65 @@
 <!doctype html>
-<html lang="es">
+<html>
 <head>
   <meta charset="utf-8">
-  <title>Abrir múltiples enlaces (seguro, sin pestañas)</title>
+  <title>Abrir múltiples enlaces</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="referrer" content="no-referrer">
   <style>
-    :root { color-scheme: light dark; }
-    body{font-family:Segoe UI,Arial,system-ui,-apple-system,sans-serif; padding:20px; line-height:1.35}
-    h1{font-size:1.2rem; margin:0 0 8px}
-    .row{margin:10px 0}
-    #msg{margin:8px 0; color:#555}
-    ul{margin-top:10px; padding-left:18px}
-    li{margin:6px 0; word-break:break-all}
-    button{padding:8px 12px; border-radius:8px; border:1px solid #888; background:#f6f6f6; cursor:pointer}
-    button:disabled{opacity:.6; cursor:not-allowed}
-    small{color:#666}
-    .warn{color:#b45309}
-    .ok{color:#166534}
-    .muted{color:#777}
+    body{font-family:Segoe UI,Arial;padding:20px}
+    #msg{margin-left:12px;color:#555}
+    ul{margin-top:14px}
   </style>
 </head>
 <body>
-  <h1>Abrir múltiples enlaces</h1>
-
-  <div id="msg" class="muted">Cargando parámetros…</div>
-
-  <div class="row">
-    <button id="openBtn" disabled>Abrir descargas</button>
-  </div>
-
-  <div class="row">
-    <small>Usa <code>?u=</code> o <code>#hash</code> con enlaces separados por <code>|</code>. Ejemplo:
-      <code>?u=https%3A%2F%2Fejemplo.com%7Chttps%3A%2F%2Fdrive.google.com%2Ffile%2Fd%2FABC</code>
-    </small>
-  </div>
-
   <ul id="list"></ul>
-
   <script>
   (function () {
-    // ======== Configuración ========
-    const MAX_TO_OPEN = 10;           // Límite de seguridad
-    const REQUIRE_CONFIRMATION = true;
-    const ENABLE_WHITELIST = false;   // Cambia a true para restringir dominios
-    const ALLOWED_HOSTS = new Set([
-      // "drive.google.com",
-      // "drive.usercontent.google.com"
-    ]);
-
-    // Descarga por iframe (sin pestañas) — secuencial
-    const USE_IFRAME_DOWNLOADS = true;
-    const IFRAME_DELAY_MS = 1200;     // Pausa entre descargas (ajústalo si son archivos grandes)
-
-    // ======== Utilidades seguras ========
-    function safeDecode(s){
-      try { return decodeURIComponent(s); } catch { return ""; }
-    }
-
-    function isAllowedUrl(u){
-      try {
-        const url = new URL(u, location.href);
-        if (!/^https?:$/i.test(url.protocol)) return false;
-        if (ENABLE_WHITELIST && !ALLOWED_HOSTS.has(url.hostname)) return false;
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    function toDownloadLink(u){
-      // Soporte para Google Drive -> descarga directa
-      const m = u.match(/^https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
-      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
-      if (/^https?:\/\/drive\.google\.com\/uc\?/i.test(u)) return u;
-      return u;
-    }
-
-    // ======== Leer entrada (?u= o #hash) ========
     const qs = new URLSearchParams(location.search);
     let raw = qs.get("u") || "";
     if (!raw && location.hash) raw = location.hash.slice(1);
 
-    const inputPieces = (raw || "")
+    const originalUrls = (raw||"")
       .split("|")
-      .map(s => safeDecode(s.trim()))
+      .map(decodeURIComponent)
+      .map(s => s.trim())
       .filter(Boolean);
 
-    const validUrls = inputPieces.filter(isAllowedUrl);
-
     const ul  = document.getElementById("list");
-    const msg = document.getElementById("msg");
-    const btn = document.getElementById("openBtn");
 
-    // ======== UI ========
-    if (inputPieces.length === 0) {
-      msg.textContent = "No llegaron enlaces.";
-      btn.disabled = true;
-      ul.innerHTML = "";
+    if (originalUrls.length === 0) {
+      ul.innerHTML = "<li>No llegaron enlaces.</li>";
       return;
     }
 
-    const rejected = inputPieces.length - validUrls.length;
-    if (validUrls.length === 0) {
-      msg.innerHTML = "<span class='warn'>No hay enlaces válidos tras validar protocolo/whitelist.</span>";
-      btn.disabled = true;
-    } else {
-      const limText = validUrls.length > MAX_TO_OPEN
-        ?  (se descargarán ${MAX_TO_OPEN} de ${validUrls.length} por límite de seguridad)
-        : "";
-      const rejText = rejected > 0
-        ?  — ${rejected} enlace(s) descartado(s) por validación
-        : "";
-      msg.innerHTML = <span class='ok'>Listos ${validUrls.length} enlace(s) válidos</span>${limText}${rejText};
-      btn.disabled = false;
+    function toDownloadLink(u){
+      const m = u.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)/i);
+      if (m && m[1]) return "https://drive.usercontent.google.com/download?id=" + m[1];
+      if (/drive\.google\.com\/uc\?/.test(u)) return u;
+      return u;
     }
 
-    ul.innerHTML = "";
-    inputPieces.forEach(u => {
-      const li = document.createElement("li");
-      const a  = document.createElement("a");
-      const ok = isAllowedUrl(u);
-      a.href = ok ? u : "javascript:void(0)";
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.referrerPolicy = "no-referrer";
-      a.textContent = u + (ok ? "" : "  (descartado)");
-      if (!ok) a.className = "warn";
+    // Mostrar lista de enlaces
+    originalUrls.forEach(u=>{
+      const li=document.createElement("li");
+      const a=document.createElement("a");
+      a.href=u; a.target="_blank"; a.rel="noopener";
+      a.textContent=u;
       li.appendChild(a);
       ul.appendChild(li);
     });
 
-    // ======== Lógica de descarga ========
-    function downloadSequentiallyIframe(urls, onDone){
-      // Crea (o reutiliza) un iframe oculto
-      let iframe = document.getElementById("dl_iframe_hidden");
-      if (!iframe) {
-        iframe = document.createElement("iframe");
-        iframe.id = "dl_iframe_hidden";
-        iframe.style.display = "none";
-        iframe.setAttribute("referrerpolicy", "no-referrer");
-        document.body.appendChild(iframe);
-      }
+    // Abrir automáticamente los enlaces
+    const downloads = originalUrls.map(toDownloadLink);
+    try {
+      downloads.forEach(u => window.open(u, "_blank"));
+    } catch(e){}
 
-      let i = 0;
-      function next(){
-        if (i >= urls.length) {
-          onDone && onDone(true);
-          return;
-        }
-        try {
-          iframe.src = urls[i++];
-        } catch (e) {
-          // Si por alguna razón no podemos asignar, lo consideramos fallo y paramos
-          onDone && onDone(false);
-          return;
-        }
-        // No podemos confiar en onload para attachment; avanzamos por tiempo
-        setTimeout(next, IFRAME_DELAY_MS);
-      }
-      next();
-    }
-
-    function downloadWithOpen(urls, onDone){
-      try {
-        urls.forEach(u => window.open(u, "_blank", "noopener,noreferrer"));
-        onDone && onDone(true);
-      } catch {
-        onDone && onDone(false);
-      }
-    }
-
-    // ======== Botón principal ========
-    btn.addEventListener("click", () => {
-      const toDownload = validUrls.map(toDownloadLink).slice(0, MAX_TO_OPEN);
-
-      if (REQUIRE_CONFIRMATION) {
-        const confirmMsg =
-          Se iniciarán ${toDownload.length} descarga(s)${USE_IFRAME_DOWNLOADS ? " en segundo plano (sin pestañas)" : ""}.\n +
-          (validUrls.length > MAX_TO_OPEN ? * Nota: hay un límite de ${MAX_TO_OPEN} por seguridad.\n : "") +
-          (rejected > 0 ? * ${rejected} enlace(s) fue/fueron descartado(s) por validación.\n : "") +
-          ¿Deseas continuar?;
-        if (!confirm(confirmMsg)) return;
-      }
-
-      const finishAndClose = () => {
-        setTimeout(() => {
-          // Intento de cierre de la página (suele requerir interacción previa: este click)
-          window.open('', '_self');
-          window.close();
-        }, 800);
-      };
-
-      if (USE_IFRAME_DOWNLOADS) {
-        downloadSequentiallyIframe(toDownload, (ok) => {
-          if (!ok) {
-            // Fallback: abrir pestañas si la descarga silenciosa falla
-            downloadWithOpen(toDownload, () => finishAndClose());
-          } else {
-            finishAndClose();
-          }
-        });
-      } else {
-        downloadWithOpen(toDownload, () => finishAndClose());
-      }
-    });
+    // Cerrar esta página principal (la de los links)
+    setTimeout(() => {
+      // 🔹 Intenta cerrar esta misma ventana
+      window.open('', '_self'); // Necesario para permitir el cierre en algunos navegadores
+      window.close();
+    }, 2500); // espera 2.5 segundos antes de cerrarse
   })();
   </script>
 </body>
